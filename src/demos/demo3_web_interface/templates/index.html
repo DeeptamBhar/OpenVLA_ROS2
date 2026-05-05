@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenVLA Web Controller</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+        }
+        
+        .panel h2 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        #imagePreview {
+            width: 100%;
+            height: 400px;
+            background: #dee2e6;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        
+        #imagePreview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            background: #f1f3f5;
+            border-color: #764ba2;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        select, input[type="text"], button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+            font-size: 16px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            background: #adb5bd;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result-box {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        .metric {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            color: #212529;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        
+        .status {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 OpenVLA Web Controller</h1>
+        <p class="subtitle">Vision-Language-Action Model Interface</p>
+        
+        <div id="statusBar"></div>
+        
+        <div class="grid">
+            <!-- Left Panel: Image Input -->
+            <div class="panel">
+                <h2>📸 Image Input</h2>
+                <div id="imagePreview">
+                    <p style="color: #6c757d;">No image loaded</p>
+                </div>
+                <div class="upload-area" onclick="document.getElementById('imageInput').click()">
+                    <p>📁 Click to upload image</p>
+                    <input type="file" id="imageInput" accept="image/*">
+                </div>
+            </div>
+            
+            <!-- Right Panel: Controls -->
+            <div class="panel">
+                <h2>⚙️ Controls</h2>
+                
+                <label for="taskSelect"><strong>Task:</strong></label>
+                <select id="taskSelect">
+                    {% for task_name, task_data in tasks['tasks'].items() %}
+                    <option value="{{ task_name }}">{{ task_name }}</option>
+                    {% endfor %}
+                </select>
+                
+                <label for="promptInput"><strong>Prompt:</strong></label>
+                <input type="text" id="promptInput" placeholder="Enter custom prompt...">
+                
+                <label for="objectInput"><strong>Object:</strong></label>
+                <input type="text" id="objectInput" value="red cup" placeholder="e.g., red cup">
+                
+                <label for="containerInput"><strong>Target/Container:</strong></label>
+                <input type="text" id="containerInput" value="blue bin" placeholder="e.g., blue bin">
+                
+                <button id="inferButton" onclick="runInference()">🚀 Run Inference</button>
+            </div>
+        </div>
+        
+        <!-- Results Panel -->
+        <div class="panel">
+            <h2>📊 Results & Metrics</h2>
+            
+            <div id="resultArea" style="display:none;">
+                <div class="result-box">
+                    <h3>Predicted Action:</h3>
+                    <pre id="actionOutput" style="background: #f8f9fa; padding: 15px; border-radius: 8px; overflow-x: auto;"></pre>
+                </div>
+            </div>
+            
+            <div class="metrics" id="metricsArea">
+                <div class="metric">
+                    <div class="metric-label">Inference Time</div>
+                    <div class="metric-value" id="inferenceTime">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">FPS</div>
+                    <div class="metric-value" id="fps">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Memory Usage</div>
+                    <div class="metric-value" id="memoryUsage">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Success Rate</div>
+                    <div class="metric-value" id="successRate">--</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const socket = io();
+        let currentImage = null;
+        
+        // Socket connection
+        socket.on('connect', function() {
+            showStatus('Connected to server', 'success');
+        });
+        
+        socket.on('status', function(data) {
+            showStatus(data.message, 'info');
+        });
+        
+        socket.on('inference_result', function(data) {
+            displayResults(data);
+        });
+        
+        // Image upload
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    currentImage = event.target.result;
+                    document.getElementById('imagePreview').innerHTML = 
+                        `<img src="${currentImage}" alt="Uploaded image">`;
+                    showStatus('Image loaded successfully', 'success');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // Task selection
+        document.getElementById('taskSelect').addEventListener('change', function() {
+            fetch('/api/task', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({task: this.value})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus(`Task switched to: ${data.task}`, 'success');
+                }
+            });
+        });
+        
+        // Run inference
+        function runInference() {
+            if (!currentImage) {
+                showStatus('Please upload an image first', 'error');
+                return;
+            }
+            
+            const button = document.getElementById('inferButton');
+            button.disabled = true;
+            button.textContent = '⏳ Processing...';
+            
+            const prompt = document.getElementById('promptInput').value;
+            const object = document.getElementById('objectInput').value;
+            const container = document.getElementById('containerInput').value;
+            
+            socket.emit('process_image', {
+                image: currentImage,
+                prompt: prompt || undefined,
+                object: object,
+                container: container
+            });
+        }
+        
+        // Display results
+        function displayResults(data) {
+            const button = document.getElementById('inferButton');
+            button.disabled = false;
+            button.textContent = '🚀 Run Inference';
+            
+            if (data.error) {
+                showStatus('Error: ' + data.error, 'error');
+                return;
+            }
+            
+            // Show results
+            document.getElementById('resultArea').style.display = 'block';
+            document.getElementById('actionOutput').textContent = JSON.stringify(data.action, null, 2);
+            
+            // Update metrics
+            document.getElementById('inferenceTime').textContent = 
+                (data.inference_time * 1000).toFixed(1) + ' ms';
+            
+            if (data.metrics) {
+                document.getElementById('fps').textContent = data.metrics.fps.toFixed(2);
+                document.getElementById('memoryUsage').textContent = 
+                    data.metrics.memory_usage_mb.toFixed(0) + ' MB';
+                document.getElementById('successRate').textContent = 
+                    (data.metrics.success_rate * 100).toFixed(1) + '%';
+            }
+            
+            showStatus('Inference completed successfully', 'success');
+        }
+        
+        // Show status message
+        function showStatus(message, type) {
+            const statusBar = document.getElementById('statusBar');
+            statusBar.innerHTML = `<div class="status ${type}">${message}</div>`;
+            setTimeout(() => {
+                statusBar.innerHTML = '';
+            }, 5000);
+        }
+        
+        // Load metrics periodically
+        setInterval(() => {
+            fetch('/api/metrics')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.error) {
+                        document.getElementById('fps').textContent = data.fps.toFixed(2);
+                        document.getElementById('memoryUsage').textContent = 
+                            data.memory_usage_mb.toFixed(0) + ' MB';
+                        document.getElementById('successRate').textContent = 
+                            (data.success_rate * 100).toFixed(1) + '%';
+                    }
+                });
+        }, 5000);
+    </script>
+</body>
+</html>

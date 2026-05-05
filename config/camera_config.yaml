@@ -1,0 +1,33 @@
+camera:
+  # USB Camera settings
+  usb:
+    device: "/dev/video0"
+    width: 640
+    height: 480
+    fps: 30
+    
+  # Mock camera settings
+  mock:
+    image_path: "data/test_images/desk_scene.jpg"
+    publish_rate: 2.0  # Hz
+    loop: true
+    
+  # RealSense settings
+  realsense:
+    enable_rgb: true
+    enable_depth: false
+    width: 640
+    height: 480
+    fps: 30
+
+  # Topic configuration
+  topics:
+    input: "/camera/image_raw"
+    output: "/vla/annotated_image"
+    
+  # Image preprocessing
+  preprocessing:
+    resize: [224, 224]
+    normalize: true
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
