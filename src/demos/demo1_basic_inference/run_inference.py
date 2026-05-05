@@ -80,11 +80,11 @@ def run_demo(image_path: str, task_name: str = "pick_and_place", num_runs: int =
         result = manager.infer(image, prompt, task=task_name)
         
         if result:
-            print(f"✓ ({result['inference_time']*1000:.1f}ms)")
+            print(f"OK ({result['inference_time']*1000:.1f}ms)")
             if i == 0:  # Print first result
                 print(f"  Predicted action: {result['action']}")
         else:
-            print("✗ Failed")
+            print("FAILED Failed")
     
     # Print final metrics
     print()

@@ -64,18 +64,31 @@
             height: 400px;
             background: #dee2e6;
             border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             margin-bottom: 15px;
             overflow: hidden;
+            display: block;
         }
-        
-        #imagePreview img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
+
+        #previewCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
         }
+
+        .coord-legend {
+            background: rgba(10,10,20,0.82);
+            color: #e0e7ff;
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-size: 0.82em;
+            margin-top: 8px;
+            line-height: 1.7;
+            font-family: 'Courier New', monospace;
+            display: none;
+        }
+        .coord-legend span.label { color: #a5b4fc; font-weight: bold; }
+        .coord-legend span.val   { color: #86efac; }
         
         .upload-area {
             border: 3px dashed #667eea;
@@ -199,7 +212,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🤖 OpenVLA Web Controller</h1>
+        <h1>Robot OpenVLA Web Controller</h1>
         <p class="subtitle">Vision-Language-Action Model Interface</p>
         
         <div id="statusBar"></div>
@@ -207,19 +220,20 @@
         <div class="grid">
             <!-- Left Panel: Image Input -->
             <div class="panel">
-                <h2>📸 Image Input</h2>
+                <h2>Image Image Input</h2>
                 <div id="imagePreview">
-                    <p style="color: #6c757d;">No image loaded</p>
+                    <canvas id="previewCanvas"></canvas>
                 </div>
                 <div class="upload-area" onclick="document.getElementById('imageInput').click()">
-                    <p>📁 Click to upload image</p>
+                    <p> Click to upload image</p>
                     <input type="file" id="imageInput" accept="image/*">
                 </div>
+                <div class="coord-legend" id="coordLegend"></div>
             </div>
             
             <!-- Right Panel: Controls -->
             <div class="panel">
-                <h2>⚙️ Controls</h2>
+                <h2> Controls</h2>
                 
                 <label for="taskSelect"><strong>Task:</strong></label>
                 <select id="taskSelect">
@@ -237,13 +251,13 @@
                 <label for="containerInput"><strong>Target/Container:</strong></label>
                 <input type="text" id="containerInput" value="blue bin" placeholder="e.g., blue bin">
                 
-                <button id="inferButton" onclick="runInference()">🚀 Run Inference</button>
+                <button id="inferButton" onclick="runInference()"> Run Inference</button>
             </div>
         </div>
         
         <!-- Results Panel -->
         <div class="panel">
-            <h2>📊 Results & Metrics</h2>
+            <h2> Results & Metrics</h2>
             
             <div id="resultArea" style="display:none;">
                 <div class="result-box">
@@ -275,126 +289,275 @@
     
     <script>
         const socket = io();
-        let currentImage = null;
-        
-        // Socket connection
-        socket.on('connect', function() {
-            showStatus('Connected to server', 'success');
-        });
-        
-        socket.on('status', function(data) {
-            showStatus(data.message, 'info');
-        });
-        
-        socket.on('inference_result', function(data) {
-            displayResults(data);
-        });
-        
-        // Image upload
+        let currentImage = null;   // base64 data URL
+        let loadedImageEl = null;  // HTMLImageElement for redrawing
+        let arrowAnimFrame = null;
+
+        // ----------------------------------------
+        const canvas = document.getElementById('previewCanvas');
+        const ctx    = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const box = canvas.parentElement;
+            canvas.width  = box.offsetWidth  || 400;
+            canvas.height = box.offsetHeight || 400;
+        }
+
+        function redrawImage() {
+            if (!loadedImageEl) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Center-fit the image (object-fit: contain behaviour)
+            const iw = loadedImageEl.naturalWidth;
+            const ih = loadedImageEl.naturalHeight;
+            const cw = canvas.width, ch = canvas.height;
+            const scale = Math.min(cw / iw, ch / ih);
+            const dw = iw * scale, dh = ih * scale;
+            const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+            ctx.drawImage(loadedImageEl, dx, dy, dw, dh);
+        }
+
+        // ----------------------------------------
+        socket.on('connect', () => showStatus('Connected to server', 'success'));
+        socket.on('status',  d  => showStatus(d.message, 'info'));
+        socket.on('inference_result', displayResults);
+
+        // ----------------------------------------
         document.getElementById('imageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    currentImage = event.target.result;
-                    document.getElementById('imagePreview').innerHTML = 
-                        `<img src="${currentImage}" alt="Uploaded image">`;
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                currentImage = ev.target.result;
+                const img = new Image();
+                img.onload = () => {
+                    loadedImageEl = img;
+                    if (arrowAnimFrame) { cancelAnimationFrame(arrowAnimFrame); arrowAnimFrame = null; }
+                    resizeCanvas();
+                    redrawImage();
+                    document.getElementById('coordLegend').style.display = 'none';
                     showStatus('Image loaded successfully', 'success');
                 };
-                reader.readAsDataURL(file);
-            }
+                img.src = currentImage;
+            };
+            reader.readAsDataURL(file);
         });
-        
-        // Task selection
+
+        // ----------------------------------------
         document.getElementById('taskSelect').addEventListener('change', function() {
             fetch('/api/task', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({task: this.value})
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showStatus(`Task switched to: ${data.task}`, 'success');
-                }
+            }).then(r => r.json()).then(d => {
+                if (d.success) showStatus(`Task switched to: ${d.task}`, 'success');
             });
         });
-        
-        // Run inference
+
+        // ----------------------------------------
         function runInference() {
-            if (!currentImage) {
-                showStatus('Please upload an image first', 'error');
-                return;
-            }
-            
-            const button = document.getElementById('inferButton');
-            button.disabled = true;
-            button.textContent = '⏳ Processing...';
-            
-            const prompt = document.getElementById('promptInput').value;
-            const object = document.getElementById('objectInput').value;
-            const container = document.getElementById('containerInput').value;
-            
+            if (!currentImage) { showStatus('Please upload an image first', 'error'); return; }
+            const btn = document.getElementById('inferButton');
+            btn.disabled = true;
+            btn.textContent = ' Processing...';
             socket.emit('process_image', {
-                image: currentImage,
-                prompt: prompt || undefined,
-                object: object,
-                container: container
+                image:     currentImage,
+                prompt:    document.getElementById('promptInput').value || undefined,
+                object:    document.getElementById('objectInput').value,
+                container: document.getElementById('containerInput').value
             });
         }
-        
-        // Display results
+
+        // ----------------------------------------
         function displayResults(data) {
-            const button = document.getElementById('inferButton');
-            button.disabled = false;
-            button.textContent = '🚀 Run Inference';
-            
-            if (data.error) {
-                showStatus('Error: ' + data.error, 'error');
-                return;
-            }
-            
-            // Show results
+            const btn = document.getElementById('inferButton');
+            btn.disabled = false;
+            btn.textContent = ' Run Inference';
+
+            if (data.error) { showStatus('Error: ' + data.error, 'error'); return; }
+
             document.getElementById('resultArea').style.display = 'block';
             document.getElementById('actionOutput').textContent = JSON.stringify(data.action, null, 2);
-            
-            // Update metrics
-            document.getElementById('inferenceTime').textContent = 
+
+            document.getElementById('inferenceTime').textContent =
                 (data.inference_time * 1000).toFixed(1) + ' ms';
-            
+
             if (data.metrics) {
                 document.getElementById('fps').textContent = data.metrics.fps.toFixed(2);
-                document.getElementById('memoryUsage').textContent = 
+                document.getElementById('memoryUsage').textContent =
                     data.metrics.memory_usage_mb.toFixed(0) + ' MB';
-                document.getElementById('successRate').textContent = 
+                document.getElementById('successRate').textContent =
                     (data.metrics.success_rate * 100).toFixed(1) + '%';
             }
-            
-            showStatus('Inference completed successfully', 'success');
+
+            drawActionArrow(data.action);
+            showStatus('Inference completed successfully OK', 'success');
         }
-        
-        // Show status message
+
+        // ----------------------------------------
+        function parseCoords(actionStr) {
+            if (!actionStr) return null;
+            const str = typeof actionStr === 'string' ? actionStr : JSON.stringify(actionStr);
+            const match = str.match(/\[([^\]]+)\]/);
+            if (!match) return null;
+            const nums = match[1].split(',').map(Number).filter(n => !isNaN(n));
+            return nums.length >= 2 ? nums : null;
+        }
+
+        function drawActionArrow(action) {
+            const coords = parseCoords(action);
+
+            // Show debug info so we can see what's happening
+            const legend = document.getElementById('coordLegend');
+            if (!coords) {
+                legend.style.display = 'block';
+                legend.innerHTML = '<span class="label">WARNING: Could not parse coordinates from: </span><span class="val">' + String(action).slice(0,80) + '</span>';
+                return;
+            }
+
+            // Grab canvas - must exist since image is displayed
+            const W = canvas.width  || canvas.parentElement.offsetWidth  || 400;
+            const H = canvas.height || canvas.parentElement.offsetHeight || 400;
+            canvas.width  = W;   // re-set clears context intentionally
+            canvas.height = H;
+
+            // Redraw the image first
+            redrawImage();
+
+            // OpenVLA outputs: [dx, dy, dz, droll, dpitch, dyaw, gripper]
+            const dx      = coords[0] ?? 0;
+            const dy      = coords[1] ?? 0;
+            const gripper = coords[6] ?? 0.5;
+
+            const ox = W / 2, oy = H / 2;
+
+            // Normalize direction so the arrow is ALWAYS a fixed visible length.
+            // OpenVLA outputs tiny deltas close to 0, so raw scaling makes invisible arrows.
+            const mag = Math.sqrt(dx * dx + dy * dy);
+            const arrowLen = Math.min(W, H) * 0.38;  // always 38% of image size
+            let tx, ty;
+            if (mag < 0.001) {
+                // Nearly zero movement: draw a small pulse dot at centre
+                tx = ox; ty = oy;
+            } else {
+                // Normalized direction x fixed length
+                tx = ox + (dx / mag) * arrowLen;
+                ty = oy - (dy / mag) * arrowLen;   // canvas y is flipped
+            }
+
+            const gripperColor = gripper > 0.5 ? '#00ff88' : '#ff4455';
+
+            // ----------------------------------------
+            // Thick coloured line
+            ctx.lineWidth   = 8;
+            ctx.lineCap     = 'round';
+            ctx.strokeStyle = '#ff00ff';
+            ctx.shadowColor = '#ff00ff';
+            ctx.shadowBlur  = 25;
+            ctx.beginPath();
+            ctx.moveTo(ox, oy);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Arrowhead
+            const angle = Math.atan2(ty - oy, tx - ox);
+            const hl = 22;
+            ctx.fillStyle   = '#ff00ff';
+            ctx.shadowColor = '#ff00ff';
+            ctx.shadowBlur  = 18;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(tx - hl * Math.cos(angle - 0.5), ty - hl * Math.sin(angle - 0.5));
+            ctx.lineTo(tx - hl * Math.cos(angle + 0.5), ty - hl * Math.sin(angle + 0.5));
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Origin dot
+            ctx.beginPath();
+            ctx.arc(ox, oy, 12, 0, Math.PI * 2);
+            ctx.fillStyle   = '#00ccff';
+            ctx.shadowColor = '#00ccff';
+            ctx.shadowBlur  = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Target dot
+            ctx.beginPath();
+            ctx.arc(tx, ty, 12, 0, Math.PI * 2);
+            ctx.fillStyle   = gripperColor;
+            ctx.shadowColor = gripperColor;
+            ctx.shadowBlur  = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Label at target
+            ctx.font        = 'bold 14px sans-serif';
+            ctx.fillStyle   = 'white';
+            ctx.textAlign   = 'center';
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur  = 8;
+            ctx.fillText('Robot ' + (gripper > 0.5 ? 'Open' : 'Closed'), tx, ty - 20);
+            ctx.shadowBlur = 0;
+
+            // Legend
+            const labels = ['dx','dy','dz','droll','dpitch','dyaw','gripper'];
+            legend.style.display = 'block';
+            legend.innerHTML = '<span class="label">OK: Arrow drawn on canvas (' + W + 'x' + H + ')</span><br>' +
+                coords.map((v,i) => `<span class="label">${labels[i]||'c'+i}:</span> <span class="val">${v.toFixed(4)}</span>`).join('  ');
+
+            // Now start pulsing animation on the target dot only
+            if (arrowAnimFrame) cancelAnimationFrame(arrowAnimFrame);
+            let t = 0;
+            function pulse() {
+                // Just repaint the target pulse, no need to redraw everything
+                const p = 0.7 + 0.3 * Math.sin(t++ / 8);
+                ctx.clearRect(tx - 30, ty - 30, 60, 60);
+                // Re-draw a small patch of the image behind the dot
+                if (loadedImageEl) {
+                    const iw = loadedImageEl.naturalWidth, ih = loadedImageEl.naturalHeight;
+                    const sc = Math.min(W/iw, H/ih);
+                    const dw = iw*sc, dh = ih*sc;
+                    const ix = (W-dw)/2, iy = (H-dh)/2;
+                    ctx.drawImage(loadedImageEl, (tx-30-ix)/sc, (ty-30-iy)/sc, 60/sc, 60/sc,
+                                  tx-30, ty-30, 60, 60);
+                }
+                ctx.beginPath();
+                ctx.arc(tx, ty, 12 * p, 0, Math.PI * 2);
+                ctx.fillStyle   = gripperColor;
+                ctx.shadowColor = gripperColor;
+                ctx.shadowBlur  = 20 * p;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                arrowAnimFrame = requestAnimationFrame(pulse);
+            }
+            pulse();
+        }
+
+        // ----------------------------------------
         function showStatus(message, type) {
-            const statusBar = document.getElementById('statusBar');
-            statusBar.innerHTML = `<div class="status ${type}">${message}</div>`;
-            setTimeout(() => {
-                statusBar.innerHTML = '';
-            }, 5000);
+            const bar = document.getElementById('statusBar');
+            bar.innerHTML = `<div class="status ${type}">${message}</div>`;
+            setTimeout(() => { bar.innerHTML = ''; }, 5000);
         }
-        
-        // Load metrics periodically
+
+        // ----------------------------------------
         setInterval(() => {
-            fetch('/api/metrics')
-                .then(response => response.json())
-                .then(data => {
-                    if (!data.error) {
-                        document.getElementById('fps').textContent = data.fps.toFixed(2);
-                        document.getElementById('memoryUsage').textContent = 
-                            data.memory_usage_mb.toFixed(0) + ' MB';
-                        document.getElementById('successRate').textContent = 
-                            (data.success_rate * 100).toFixed(1) + '%';
-                    }
-                });
+            fetch('/api/metrics').then(r => r.json()).then(data => {
+                if (!data.error) {
+                    document.getElementById('fps').textContent = data.fps.toFixed(2);
+                    document.getElementById('memoryUsage').textContent =
+                        data.memory_usage_mb.toFixed(0) + ' MB';
+                    document.getElementById('successRate').textContent =
+                        (data.success_rate * 100).toFixed(1) + '%';
+                }
+            });
         }, 5000);
     </script>
 </body>

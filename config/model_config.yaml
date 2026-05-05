@@ -3,7 +3,7 @@ model:
   cache_dir: "./models"
   
   quantization:
-    enabled: true
+    enabled: false
     method: "nf4"  # NormalFloat4
     bits: 4
     compute_dtype: "bfloat16"
@@ -12,7 +12,7 @@ model:
   inference:
     device: "cuda"
     torch_dtype: "bfloat16"
-    compile: true
+    compile: false
     compile_mode: "reduce-overhead"
   
   performance:

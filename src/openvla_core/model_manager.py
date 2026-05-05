@@ -141,19 +141,30 @@ class ModelManager:
             start_time = time.time()
             
             # Prepare inputs
-            inputs = self.processor(prompt, image, return_tensors="pt").to(self.device)
+            model_dtype = getattr(torch, self.config['model']['inference']['torch_dtype'])
+            inputs = self.processor(prompt, image, return_tensors="pt").to(self.device, dtype=model_dtype)
             
             # Run inference
-            with torch.no_grad():
-                outputs = self.model.generate(
+            try:
+                action_array = self.model.predict_action(
                     **inputs,
-                    max_new_tokens=256,
-                    temperature=self.config['model']['performance']['temperature'],
+                    unnorm_key="bridge_orig",
                     do_sample=False
                 )
-            
-            # Decode action
-            action = self.processor.decode(outputs[0], skip_special_tokens=True)
+                import numpy as np
+                action = f'Coordinates: [{", ".join([f"{x:.3f}" for x in action_array.tolist()])}]'
+            except Exception as e:
+                logger.warning(f"predict_action failed, falling back to generate: {e}")
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=256,
+                        temperature=self.config['model']['performance']['temperature'],
+                        do_sample=False
+                    )
+                
+                # Decode action
+                action = self.processor.decode(outputs[0], skip_special_tokens=True)
             
             # Track metrics
             inference_time = time.time() - start_time
