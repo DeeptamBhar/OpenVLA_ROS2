@@ -4,17 +4,17 @@ Modern web interface for controlling OpenVLA with real-time visualization.
 
 ## Features
 
-- 🌐 Clean, modern web UI
-- 📸 Drag-and-drop image upload
-- 🔄 Real-time task switching
-- 📊 Live performance metrics
-- ⚡ WebSocket communication
-- 📱 Responsive design
+- Clean, modern web UI
+- Drag-and-drop image upload
+- Real-time task switching
+- Live performance metrics
+- WebSocket communication
+- Responsive design
 
 ## Quick Start
 
 ```bash
-cd src/demos/demo3_web_interface
+cd src/demos/web_interface
 
 # Install dependencies
 pip install flask flask-socketio python-socketio

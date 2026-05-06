@@ -2,11 +2,11 @@
 
 echo "Setting up OpenVLA-ROS2-Workspace environment..."
 
-# Check Python version
+# Checking Python version
 python_version=$(python3.11 --version 2>&1 | awk '{print $2}')
 echo "Python version: $python_version"
 
-# Check CUDA
+# Checking CUDA
 if command -v nvidia-smi &> /dev/null; then
     echo "CUDA available:"
     nvidia-smi --query-gpu=name,memory.total --format=csv,noheader

@@ -4,12 +4,12 @@ Full ROS 2 workspace with multi-task support, performance monitoring, and visual
 
 ## Features
 
-✅ **Multi-task switching** - Change tasks at runtime via ROS topics  
-✅ **Performance monitoring** - Real-time metrics publishing  
-✅ **3D visualization** - MarkerArray for RViz  
-✅ **2D annotation** - Annotated camera feed  
-✅ **Modular architecture** - Separate nodes for camera, control, monitoring  
-✅ **Launch files** - Easy system startup
+ **Multi-task switching** - Change tasks at runtime via ROS topics  
+ **Performance monitoring** - Real-time metrics publishing  
+ **3D visualization** - MarkerArray for RViz  
+ **2D annotation** - Annotated camera feed  
+ **Modular architecture** - Separate nodes for camera, control, monitoring  
+ **Launch files** - Easy system startup
 
 ## Quick Start
 

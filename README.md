@@ -1,124 +1,98 @@
-# OpenVLA-ROS2-Workspace
+# OpenVLA-ROS2
 
-A comprehensive demonstration workspace for deploying OpenVLA (Vision-Language-Action) models in robotic applications, featuring multi-task support, performance benchmarking, and ROS 2 integration.
+A comprehensive, deployment-ready workspace for the [OpenVLA](https://github.com/openvla/openvla) (Vision-Language-Action) 7B model. This repository bridges high-level VLM research with practical robotics through 4-bit quantization, ROS 2 middleware, and a real-time monitoring dashboard.
 
-## 🌟 Key Features
+---
 
-- **Multi-Task Configuration**: Define and switch between manipulation tasks via YAML
-- **Performance Benchmarking**: Track inference latency, FPS, memory usage, and success rates
-- **Modular Architecture**: Reusable core components for model management
-- **Three Demo Levels**:
-  1. Basic inference with metrics
-  2. Full ROS 2 integration
-  3. Web-based control interface
-- **Production-Ready**: Error handling, logging, and comprehensive testing
+## Project Architecture
 
-## 🎯 Distinguishing Features
+**Core Engine:**
+1.  **`openvla_core`**: The central logic engine. Manages 4-bit/8-bit quantization via `bitsandbytes` to allow the 7B model to run on consumer GPUs (6GB+ VRAM).
 
-Unlike basic VLA demos, this workspace provides:
-- **Configurable task system** - No hardcoded prompts
-- **Performance tracking** - Automated benchmarking suite
-- **Better error handling** - Graceful degradation and logging
-- **Extensible architecture** - Easy to add new tasks and demos
-- **Documentation** - Detailed guides and architecture diagrams
+**Deployment Vehicles:**
+2.  **`ros2_integration`**: A full ROS 2 workspace that transforms OpenVLA into a robotic "brain," publishing 3D waypoints and annotated feeds.
+3.  **`web_interface`**: A modern Flask + Socket.IO dashboard for remote testing and real-time visualization of model outputs.
 
-## 📋 Prerequisites
+---
 
-- Ubuntu 22.04/24.04
-- Python 3.10+
-- NVIDIA GPU with 6GB+ VRAM
-- CUDA 12.1+
-- ROS 2 Jazzy (for Demo 2)
+## Environment Setup
 
-## 🚀 Quick Start
+### Prerequisites
+*   **OS:** Ubuntu 22.04 / 24.04
+*   **Frameworks:** ROS 2 (Humble or Jazzy)
+*   **Hardware:** NVIDIA GPU (CUDA 12.1+) with at least **6GB VRAM**.
 
-### 1. Clone and Setup
+### Installation
+1.  **Clone the Repo:**
+    ```bash
+    git clone https://github.com/yourusername/OpenVLA-ROS2-Workspace.git
+    cd OpenVLA-ROS2-Workspace
+    ```
 
+2.  **Automated Setup:**
+    The setup script handles the virtual environment and heavy dependencies (Torch, Transformers, Accelerate).
+    ```bash
+    chmod +x scripts/setup_environment.sh
+    ./scripts/setup_environment.sh
+    source venv/bin/activate
+    ```
+
+---
+
+## Deployment Modes
+
+### 1. ROS 2 Integration
+Run the model as a live node. This version supports dynamic task switching via ROS topics.
 ```bash
-git clone https://github.com/yourusername/OpenVLA-ROS2-Workspace.git
-cd OpenVLA-ROS2-Workspace
+cd src/demos/ros2_integration/ros2_ws
+colcon build --symlink-install
+source install/setup.bash
 
-# Run setup script
-chmod +x scripts/setup_environment.sh
-./scripts/setup_environment.sh
-
-# Activate environment
-source venv/bin/activate
+# Terminal 1: Launch the VLA Controller & Mock Camera
+ros2 launch vla_control vla_system.launch.py source_type:=mock
 ```
 
-### 2. Download Test Images
-
+### 2. Web Dashboard
+The easiest way to demonstrate the project. Upload images and see AI actions in your browser.
 ```bash
-mkdir -p data/test_images
-# Add your test images here
+cd src/demos/web_interface
+python app.py
 ```
 
-### 3. Run Demo 1
+---
 
-```bash
-python src/demos/demo1_basic_inference/run_inference.py \
-  --image data/test_images/desk_scene.jpg \
-  --task pick_and_place \
-  --runs 10
+## Visualizing in RViz2
+
+When running **ROS 2 Robotics Mode**, you can visualize the "thoughts" of the VLA model in 3D space:
+
+1.  **Launch RViz:** `rviz2`
+2.  **Fixed Frame:** Set to `map`.
+3.  **Add Displays:**
+    *   **3D Waypoints:** Add `/vla/waypoint_markers` (MarkerArray).
+    *   **Annotated Feed:** Add `/vla/annotated_image` (Image).
+
+> **Note:** The model uses **4-bit NF4 quantization**. This reduces VRAM usage from ~28GB to **~7GB**, making it accessible for mid-range workstations while maintaining action accuracy.
+
+---
+
+## ROS 2 Architecture
+
+| Topic | Type | Description |
+| :--- | :--- | :--- |
+| `/camera/image_raw` | `sensor_msgs/Image` | Raw input feed. |
+| `/vla/task_command` | `std_msgs/String` | Send `switch:<task_name>` to change AI behavior. |
+| `/vla/waypoint_markers`| `viz_msgs/MarkerArray` | 3D visual targets for the robot arm. |
+| `/vla/metrics` | `std_msgs/String` | Real-time FPS, Latency, and VRAM logs. |
+
+---
+
+## Configuration
+Add custom robotic tasks by editing `config/tasks.yaml`. The system automatically generates the correct prompts for the VLA model.
+
+```yaml
+tasks:
+  open_drawer:
+    prompt: "Open the {drawer} drawer"
+    action_dims: 7
 ```
 
-## 📊 Performance Benchmarks
-
-| GPU | VRAM | Quantization | Avg Latency | FPS |
-|-----|------|--------------|-------------|-----|
-| RTX 4090 | 24GB | 4-bit | ~165ms | ~6.0 |
-| RTX 3090 | 24GB | 4-bit | ~250ms | ~4.0 |
-| RTX 3060 | 12GB | 4-bit | ~400ms | ~2.5 |
-
-*Benchmarks measured on Demo 1 with default configuration*
-
-## 🏗️ Architecture
-
-## 📚 Documentation
-
-- [Architecture Details](docs/architecture.md)
-- [Performance Benchmarks](docs/performance_benchmarks.md)
-- [Adding Custom Tasks](docs/custom_tasks.md)
-- [ROS 2 Integration Guide](src/demos/demo2_ros2_integration/README.md)
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest tests/
-
-# With coverage
-pytest --cov=src tests/
-```
-
-## 📝 Configuration
-
-All behavior is controlled via YAML files in `config/`:
-
-- `model_config.yaml` - Model loading and quantization settings
-- `tasks.yaml` - Task definitions and prompts
-- `camera_config.yaml` - Camera and preprocessing settings
-
-## 🤝 Contributing
-
-This is an academic project. For improvements:
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new features
-4. Submit a pull request
-
-## 📄 License
-
-MIT License - See LICENSE file
-
-## 🙏 Acknowledgments
-
-- OpenVLA team for the base model
-- ROS 2 community for robotics framework
-- Hugging Face for model hosting
-
-## 📧 Contact
-
-[Your Name] - [Your Email]
-
-Project Link: https://github.com/DeeptamBhar/OpenVLA-ROS2-Workspace
