@@ -1,4 +1,4 @@
-# Demo 2: Advanced ROS 2 Integration
+# Demo 1: ROS 2 Integration
 
 Full ROS 2 workspace with multi-task support, performance monitoring, and visualization.
 
@@ -22,10 +22,6 @@ colcon build --symlink-install
 # Source
 source install/setup.bash
 
-# Launch complete system
-ros2 launch vla_control vla_system.launch.py source_type:=mock
-
-# Or run nodes individually
 # Terminal 1: Camera
 ros2 run vla_control camera_publisher --ros-args -p source_type:=mock
 

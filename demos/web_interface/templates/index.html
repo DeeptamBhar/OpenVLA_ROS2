@@ -212,15 +212,15 @@
 </head>
 <body>
     <div class="container">
-        <h1>Robot OpenVLA Web Controller</h1>
-        <p class="subtitle">Vision-Language-Action Model Interface</p>
+        <h1>OpenVLA Web Controller</h1>
+        <p class="subtitle">VLA Model Interface</p>
         
         <div id="statusBar"></div>
         
         <div class="grid">
             <!-- Left Panel: Image Input -->
             <div class="panel">
-                <h2>Image Image Input</h2>
+                <h2>Image</h2>
                 <div id="imagePreview">
                     <canvas id="previewCanvas"></canvas>
                 </div>
@@ -246,10 +246,10 @@
                 <input type="text" id="promptInput" placeholder="Enter custom prompt...">
                 
                 <label for="objectInput"><strong>Object:</strong></label>
-                <input type="text" id="objectInput" value="red cup" placeholder="e.g., red cup">
+                <input type="text" id="objectInput" placeholder="e.g., red cup">
                 
                 <label for="containerInput"><strong>Target/Container:</strong></label>
-                <input type="text" id="containerInput" value="blue bin" placeholder="e.g., blue bin">
+                <input type="text" id="containerInput" placeholder="e.g., blue bin">
                 
                 <button id="inferButton" onclick="runInference()"> Run Inference</button>
             </div>
@@ -389,8 +389,8 @@
                     (data.metrics.success_rate * 100).toFixed(1) + '%';
             }
 
-            drawActionArrow(data.action);
-            showStatus('Inference completed successfully OK', 'success');
+            drawActionArrow(data.action, data.target_pixel || null, data.task || '');
+            showStatus('Inference completed successfully', 'success');
         }
 
         // ----------------------------------------
@@ -403,10 +403,9 @@
             return nums.length >= 2 ? nums : null;
         }
 
-        function drawActionArrow(action) {
+        function drawActionArrow(action, targetPixel, task) {
             const coords = parseCoords(action);
 
-            // Show debug info so we can see what's happening
             const legend = document.getElementById('coordLegend');
             if (!coords) {
                 legend.style.display = 'block';
@@ -414,127 +413,186 @@
                 return;
             }
 
-            // Grab canvas - must exist since image is displayed
             const W = canvas.width  || canvas.parentElement.offsetWidth  || 400;
             const H = canvas.height || canvas.parentElement.offsetHeight || 400;
-            canvas.width  = W;   // re-set clears context intentionally
+            canvas.width  = W;
             canvas.height = H;
-
-            // Redraw the image first
             redrawImage();
 
-            // OpenVLA outputs: [dx, dy, dz, droll, dpitch, dyaw, gripper]
             const dx      = coords[0] ?? 0;
             const dy      = coords[1] ?? 0;
             const gripper = coords[6] ?? 0.5;
-
             const ox = W / 2, oy = H / 2;
 
-            // Normalize direction so the arrow is ALWAYS a fixed visible length.
-            // OpenVLA outputs tiny deltas close to 0, so raw scaling makes invisible arrows.
-            const mag = Math.sqrt(dx * dx + dy * dy);
-            const arrowLen = Math.min(W, H) * 0.38;  // always 38% of image size
             let tx, ty;
-            if (mag < 0.001) {
-                // Nearly zero movement: draw a small pulse dot at centre
-                tx = ox; ty = oy;
+            let detectedLabel = '';
+
+            if (targetPixel && targetPixel.x != null) {
+                const iw = loadedImageEl ? loadedImageEl.naturalWidth  : W;
+                const ih = loadedImageEl ? loadedImageEl.naturalHeight : H;
+                const scale = Math.min(W / iw, H / ih);
+                const dw = iw * scale, dh = ih * scale;
+                const imgX = (W - dw) / 2, imgY = (H - dh) / 2;
+                tx = imgX + targetPixel.x * dw;
+                ty = imgY + targetPixel.y * dh;
+                detectedLabel = ' DETECTED (' + (targetPixel.pixel_count || 0).toLocaleString() + ' px)';
             } else {
-                // Normalized direction x fixed length
-                tx = ox + (dx / mag) * arrowLen;
-                ty = oy - (dy / mag) * arrowLen;   // canvas y is flipped
+                const mag = Math.sqrt(dx * dx + dy * dy);
+                const arrowLen = Math.min(W, H) * 0.38;
+                if (mag < 0.001) { tx = ox; ty = oy; }
+                else {
+                    tx = ox + (dx / mag) * arrowLen;
+                    ty = oy - (dy / mag) * arrowLen;
+                }
+            }
+
+            // For push_to_target: extend the arrow PAST the object
+            const mainAngle = Math.atan2(ty - oy, tx - ox);
+            let arrowTipX = tx, arrowTipY = ty;
+            if (task === 'push_to_target') {
+                arrowTipX = tx + Math.cos(mainAngle) * 60;
+                arrowTipY = ty + Math.sin(mainAngle) * 60;
             }
 
             const gripperColor = gripper > 0.5 ? '#00ff88' : '#ff4455';
 
-            // ----------------------------------------
-            // Thick coloured line
-            ctx.lineWidth   = 8;
-            ctx.lineCap     = 'round';
-            ctx.strokeStyle = '#ff00ff';
-            ctx.shadowColor = '#ff00ff';
-            ctx.shadowBlur  = 25;
-            ctx.beginPath();
-            ctx.moveTo(ox, oy);
-            ctx.lineTo(tx, ty);
-            ctx.stroke();
-            ctx.shadowBlur = 0;
+            // ── Task colour palette ──────────────────────────────────────────
+            const TASK_COLOR = {
+                'pick_and_place':  '#ff00ff',
+                'push_to_target':  '#ffcc00',
+                'reach_to_object': '#00e5ff',
+                'open_drawer':     '#ff7700',
+            };
+            const arrowColor = TASK_COLOR[task] || '#ff00ff';
 
-            // Arrowhead
-            const angle = Math.atan2(ty - oy, tx - ox);
-            const hl = 22;
-            ctx.fillStyle   = '#ff00ff';
-            ctx.shadowColor = '#ff00ff';
-            ctx.shadowBlur  = 18;
-            ctx.beginPath();
-            ctx.moveTo(tx, ty);
-            ctx.lineTo(tx - hl * Math.cos(angle - 0.5), ty - hl * Math.sin(angle - 0.5));
-            ctx.lineTo(tx - hl * Math.cos(angle + 0.5), ty - hl * Math.sin(angle + 0.5));
-            ctx.closePath();
-            ctx.fill();
-            ctx.shadowBlur = 0;
+            // ── Helper: draw a glowing arrow shaft + head ────────────────────
+            function drawArrow(x1, y1, x2, y2, color, width, dashed) {
+                ctx.save();
+                ctx.lineWidth   = width || 7;
+                ctx.lineCap     = 'round';
+                ctx.strokeStyle = color;
+                ctx.shadowColor = color;
+                ctx.shadowBlur  = 22;
+                if (dashed) ctx.setLineDash(dashed);
+                ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.shadowBlur = 0;
+                // arrowhead
+                const a = Math.atan2(y2 - y1, x2 - x1), hl = 18;
+                ctx.fillStyle   = color;
+                ctx.shadowColor = color; ctx.shadowBlur = 14;
+                ctx.beginPath();
+                ctx.moveTo(x2, y2);
+                ctx.lineTo(x2 - hl*Math.cos(a-0.45), y2 - hl*Math.sin(a-0.45));
+                ctx.lineTo(x2 - hl*Math.cos(a+0.45), y2 - hl*Math.sin(a+0.45));
+                ctx.closePath(); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
 
-            // Origin dot
-            ctx.beginPath();
-            ctx.arc(ox, oy, 12, 0, Math.PI * 2);
-            ctx.fillStyle   = '#00ccff';
-            ctx.shadowColor = '#00ccff';
-            ctx.shadowBlur  = 20;
-            ctx.fill();
-            ctx.shadowBlur = 0;
+            function glowDot(x, y, r, color) {
+                ctx.save();
+                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+                ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 22;
+                ctx.fill(); ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
+                ctx.restore();
+            }
 
-            // Target dot
-            ctx.beginPath();
-            ctx.arc(tx, ty, 12, 0, Math.PI * 2);
-            ctx.fillStyle   = gripperColor;
-            ctx.shadowColor = gripperColor;
-            ctx.shadowBlur  = 20;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+            function label(text, x, y, color) {
+                ctx.save();
+                ctx.font = 'bold 13px sans-serif';
+                ctx.fillStyle = color || 'white';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 8;
+                ctx.fillText(text, x, y);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
 
-            // Label at target
-            ctx.font        = 'bold 14px sans-serif';
-            ctx.fillStyle   = 'white';
-            ctx.textAlign   = 'center';
-            ctx.shadowColor = 'rgba(0,0,0,0.9)';
-            ctx.shadowBlur  = 8;
-            ctx.fillText('Robot ' + (gripper > 0.5 ? 'Open' : 'Closed'), tx, ty - 20);
-            ctx.shadowBlur = 0;
+            // ── Draw base arrow (task-coloured) ──────────────────────────────
+            drawArrow(ox, oy, arrowTipX, arrowTipY, arrowColor, 7);
 
-            // Legend
+            // ── Origin dot ───────────────────────────────────────────────────
+            glowDot(ox, oy, 11, '#00ccff');
+
+            // ── Task-specific overlays ────────────────────────────────────────
+            if (task === 'pick_and_place') {
+                // Target dot (gripper state)
+                glowDot(tx, ty, 12, gripperColor);
+                label(gripper > 0.5 ? 'OPEN' : 'GRASP', tx, ty - 22, gripperColor);
+                // Lift arrow going straight up from the target
+                drawArrow(tx, ty, tx, ty - 65, '#00ccff', 4, [7, 4]);
+                label('LIFT ↑', tx, ty - 80, '#00ccff');
+
+            } else if (task === 'push_to_target') {
+                // Ring at actual object location, arrow extends past it
+                ctx.save();
+                ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 3;
+                ctx.setLineDash([5, 4]);
+                ctx.shadowColor = '#ffcc00'; ctx.shadowBlur = 12;
+                ctx.beginPath(); ctx.arc(tx, ty, 22, 0, Math.PI*2); ctx.stroke();
+                ctx.setLineDash([]); ctx.shadowBlur = 0; ctx.restore();
+                glowDot(arrowTipX, arrowTipY, 10, '#ffcc00');
+                label('PUSH ▶', arrowTipX + 2, arrowTipY - 22, '#ffcc00');
+
+            } else if (task === 'reach_to_object') {
+                // Crosshair at target
+                glowDot(tx, ty, 12, '#00e5ff');
+                ctx.save();
+                ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 2; ctx.globalAlpha = 0.8;
+                ctx.beginPath(); ctx.moveTo(tx-22, ty); ctx.lineTo(tx+22, ty); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx, ty-22); ctx.lineTo(tx, ty+22); ctx.stroke();
+                ctx.restore();
+                label('REACH ✚', tx, ty - 28, '#00e5ff');
+
+            } else if (task === 'open_drawer') {
+                // Grab dot at target, then pull-back dashed arc
+                glowDot(tx, ty, 12, '#ff7700');
+                label('GRIP', tx, ty - 22, '#ff7700');
+                // Dashed line going backward from target (pull direction)
+                const pullDist = 70;
+                const pullX = tx - Math.cos(mainAngle) * pullDist;
+                const pullY = ty - Math.sin(mainAngle) * pullDist;
+                drawArrow(tx, ty, pullX, pullY, '#ff7700', 4, [8, 5]);
+                label('◀ PULL', pullX, pullY - 18, '#ff7700');
+
+            } else {
+                // Fallback generic
+                glowDot(tx, ty, 12, gripperColor);
+                label('Robot ' + (gripper > 0.5 ? 'Open' : 'Closed'), tx, ty - 20, 'white');
+            }
+
+            // ── Legend ───────────────────────────────────────────────────────
             const labels = ['dx','dy','dz','droll','dpitch','dyaw','gripper'];
             legend.style.display = 'block';
-            legend.innerHTML = '<span class="label">OK: Arrow drawn on canvas (' + W + 'x' + H + ')</span><br>' +
+            legend.innerHTML = '<span class="label">Task: <span class="val">' + (task||'?') + '</span>' + detectedLabel + '</span><br>' +
                 coords.map((v,i) => `<span class="label">${labels[i]||'c'+i}:</span> <span class="val">${v.toFixed(4)}</span>`).join('  ');
 
-            // Now start pulsing animation on the target dot only
+            // ── Pulsing animation on target dot ───────────────────────────────
             if (arrowAnimFrame) cancelAnimationFrame(arrowAnimFrame);
             let t = 0;
             function pulse() {
-                // Just repaint the target pulse, no need to redraw everything
                 const p = 0.7 + 0.3 * Math.sin(t++ / 8);
-                ctx.clearRect(tx - 30, ty - 30, 60, 60);
-                // Re-draw a small patch of the image behind the dot
+                const dotX = (task === 'push_to_target') ? arrowTipX : tx;
+                const dotY = (task === 'push_to_target') ? arrowTipY : ty;
+                const pColor = (task === 'push_to_target') ? '#ffcc00'
+                             : (task === 'reach_to_object') ? '#00e5ff'
+                             : (task === 'open_drawer')     ? '#ff7700'
+                             : gripperColor;
+                ctx.clearRect(dotX - 30, dotY - 30, 60, 60);
                 if (loadedImageEl) {
                     const iw = loadedImageEl.naturalWidth, ih = loadedImageEl.naturalHeight;
                     const sc = Math.min(W/iw, H/ih);
                     const dw = iw*sc, dh = ih*sc;
                     const ix = (W-dw)/2, iy = (H-dh)/2;
-                    ctx.drawImage(loadedImageEl, (tx-30-ix)/sc, (ty-30-iy)/sc, 60/sc, 60/sc,
-                                  tx-30, ty-30, 60, 60);
+                    ctx.drawImage(loadedImageEl, (dotX-30-ix)/sc, (dotY-30-iy)/sc, 60/sc, 60/sc,
+                                  dotX-30, dotY-30, 60, 60);
                 }
-                ctx.beginPath();
-                ctx.arc(tx, ty, 12 * p, 0, Math.PI * 2);
-                ctx.fillStyle   = gripperColor;
-                ctx.shadowColor = gripperColor;
-                ctx.shadowBlur  = 20 * p;
-                ctx.fill();
-                ctx.shadowBlur = 0;
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 2;
-                ctx.stroke();
+                ctx.beginPath(); ctx.arc(dotX, dotY, 12*p, 0, Math.PI*2);
+                ctx.fillStyle = pColor; ctx.shadowColor = pColor; ctx.shadowBlur = 20*p;
+                ctx.fill(); ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
                 arrowAnimFrame = requestAnimationFrame(pulse);
             }
             pulse();

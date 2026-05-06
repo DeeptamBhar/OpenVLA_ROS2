@@ -7,7 +7,7 @@ A comprehensive, deployment-ready workspace for the [OpenVLA](https://github.com
 ## Project Architecture
 
 **Core Engine:**
-1.  **`openvla_core`**: The central logic engine. Manages 4-bit/8-bit quantization via `bitsandbytes` to allow the 7B model to run on consumer GPUs (6GB+ VRAM).
+1.  **`openvla_core`**: The central logic engine. Manages 4-bit/8-bit quantization via `bitsandbytes` to allow the 7B model to run on our GPUs (6GB+ VRAM).
 
 **Deployment Vehicles:**
 2.  **`ros2_integration`**: A full ROS 2 workspace that transforms OpenVLA into a robotic "brain," publishing 3D waypoints and annotated feeds.
@@ -25,8 +25,8 @@ A comprehensive, deployment-ready workspace for the [OpenVLA](https://github.com
 ### Installation
 1.  **Clone the Repo:**
     ```bash
-    git clone https://github.com/yourusername/OpenVLA-ROS2-Workspace.git
-    cd OpenVLA-ROS2-Workspace
+    git clone https://github.com/DeeptamBhar/OpenVLA_ROS2.git
+    cd OpenVLA_ROS2
     ```
 
 2.  **Automated Setup:**
@@ -44,7 +44,7 @@ A comprehensive, deployment-ready workspace for the [OpenVLA](https://github.com
 ### 1. ROS 2 Integration
 Run the model as a live node. This version supports dynamic task switching via ROS topics.
 ```bash
-cd src/demos/ros2_integration/ros2_ws
+cd demos/ros2_integration/ros2_ws
 colcon build --symlink-install
 source install/setup.bash
 
@@ -53,9 +53,9 @@ ros2 launch vla_control vla_system.launch.py source_type:=mock
 ```
 
 ### 2. Web Dashboard
-The easiest way to demonstrate the project. Upload images and see AI actions in your browser.
+The easiest way to demonstrate the project. Upload images and see actions in your browser.
 ```bash
-cd src/demos/web_interface
+cd demos/web_interface
 python app.py
 ```
 
@@ -96,3 +96,8 @@ tasks:
     action_dims: 7
 ```
 
+---
+
+## Preview
+
+![OpenVLA Web Controller](pics/web_controller_demo.png)

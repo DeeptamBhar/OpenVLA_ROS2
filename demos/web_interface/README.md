@@ -1,20 +1,20 @@
-# Demo 3: Web-based Control Interface
+# Demo 2: Web-based Control Interface
 
 Modern web interface for controlling OpenVLA with real-time visualization.
 
 ## Features
 
-- Clean, modern web UI
-- Drag-and-drop image upload
-- Real-time task switching
-- Live performance metrics
-- WebSocket communication
-- Responsive design
+- Clean, modern web UI with drag-and-drop image upload
+- **Interactive canvas visualization** of robotic predictions (arrows, targets, and tool paths)
+- **Task-specific graphics** (e.g., lift arrows for pick_and_place, crosshairs for reaching)
+- Built-in **color-based object detection** to point directly at specified items in the image
+- Real-time task switching and live performance metrics
+- WebSocket communication and responsive design
 
 ## Quick Start
 
 ```bash
-cd src/demos/web_interface
+cd demos/web_interface
 
 # Install dependencies
 pip install flask flask-socketio python-socketio
